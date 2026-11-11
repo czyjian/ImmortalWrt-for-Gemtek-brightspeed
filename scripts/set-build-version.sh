@@ -106,7 +106,7 @@ detect_device_model() {
 device_model="$(detect_device_model || true)"
 # profile 推导不到时，沿用 config 里已有的设备名后缀，防止被覆盖丢失
 [ -n "$device_model" ] || device_model="$(detect_model_from_dist || true)"
-version_dist="${VERSION_DIST:-ImmortalWrt naoki66${device_model:+ $device_model}}"
+version_dist="${VERSION_DIST:-ImmortalWrt${device_model:+ $device_model}}"
 version_product="${VERSION_PRODUCT:-$device_model}"
 # 默认主机名沿用简约化设备名；空格/下划线转连字符，剔除非法字符（主机名只允许 ASCII）
 hostname="${DEVICE_HOSTNAME:-$device_model}"

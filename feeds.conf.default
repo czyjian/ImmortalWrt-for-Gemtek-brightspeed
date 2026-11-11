@@ -28,3 +28,6 @@ src-git easytier https://github.com/EasyTier/luci-app-easytier.git;main
 src-git helloworld https://github.com/fw876/helloworld.git;dev
 src-git --directory=luci-app-pushbot pushbot https://github.com/naoki66/luci-app-pushbot.git
 src-git --root=deploy/openwrt ac_agent https://github.com/naoki66/OpenWrt_AC-Controller.git
+
+src-git --directory=luci-theme-shadcn shadcn https://github.com/eamonxg/luci-theme-shadcn.git
+src-git tailscale_community https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community.git

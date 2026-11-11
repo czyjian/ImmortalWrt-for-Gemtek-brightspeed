@@ -221,7 +221,12 @@ define Device/gemtek_xr1710g
   # lines use := and freeze $(firstword $(DEVICE_DTS)) at eval time.
   DEVICE_DTS := an7581-xr1710g
   $(call Device/gemtek_xr1710g-common)
+  # Enable the old board-name alias ONLY for verified stock-chainloader
+  # layouts with UBI at 0x700000, never for full-NAND UBI layouts.
   SUPPORTED_DEVICES := gemtek,xr1710g
+  ifeq ($$(XR1710G_LEGACY_CHAINLOADER_COMPAT),1)
+    SUPPORTED_DEVICES += gemtek,xr1710g-ubi
+  endif
 endef
 TARGET_DEVICES += gemtek_xr1710g
 

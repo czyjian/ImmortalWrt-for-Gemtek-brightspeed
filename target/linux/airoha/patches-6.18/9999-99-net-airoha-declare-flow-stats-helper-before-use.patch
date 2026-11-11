@@ -1,0 +1,18 @@
+From: Custom XR1710G build
+Subject: [PATCH] net: airoha: declare flow stats helper before use
+
+The debugfs FOE dump calls the helper before its definition. Add the
+matching static prototype to avoid implicit declaration and conflicting
+type errors, without changing runtime behavior.
+
+--- a/drivers/net/ethernet/airoha/airoha_ppe_debugfs.c
++++ b/drivers/net/ethernet/airoha/airoha_ppe_debugfs.c
+@@ -8,6 +8,8 @@
+ 
+ #include "airoha_regs.h"
+ #include "airoha_eth.h"
++
++static bool airoha_ppe_flow_stats_available(struct airoha_ppe *ppe);
+ 
+ static void airoha_debugfs_ppe_print_tuple(struct seq_file *m,
+ 					   void *src_addr, void *dest_addr,

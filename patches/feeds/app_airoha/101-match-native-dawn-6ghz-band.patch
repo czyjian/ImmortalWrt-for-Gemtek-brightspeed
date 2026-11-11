@@ -1,0 +1,33 @@
+Subject: [PATCH] mesh-conf: use native DAWN 6 GHz section name
+
+--- a/luci-app-mesh-conf/htdocs/luci-static/resources/view/meshconf/meshconf.js
++++ b/luci-app-mesh-conf/htdocs/luci-static/resources/view/meshconf/meshconf.js
+@@ -823,7 +823,7 @@
+ var STEER_BANDS = [
+ 	{ pfx: 'g', name: '802_11g', label: _('2.4 GHz') },
+ 	{ pfx: 'a', name: '802_11a', label: _('5 GHz') },
+-	{ pfx: 'x', name: '802_11a_6g', label: _('6 GHz') }
++	{ pfx: 'x', name: '802_11ax', label: _('6 GHz') }
+ ];
+ 
+ var STEER_KEYS = [ 'initial_score', 'rssi_val', 'low_rssi_val', 'rssi_weight', 'rssi_center' ];
+@@ -997,7 +997,7 @@
+ 	}
+ 
+ 	if (s.has_6g_radio) {
+-		var six = bandConf('802_11a_6g');
++		var six = bandConf('802_11ax');
+ 		if (!six.present) {
+ 			banners.push(E('div', { 'class': 'nm-banner info' }, [
+ 				E('strong', {}, _('This device has a 6 GHz radio, but the current DAWN does not recognise the 6G section')),
+--- a/luci-app-mesh-conf/root/usr/libexec/rpcd/luci.meshconf
++++ b/luci-app-mesh-conf/root/usr/libexec/rpcd/luci.meshconf
+@@ -524,7 +524,7 @@
+ # DAWN to know about a third band (see patches/feeds/packages/net/dawn). An
+ # unpatched DAWN ignores it, which is harmless - a 6 GHz radio then falls back
+ # to the 802_11a numbers, exactly like it does without the section.
+-DAWN_BANDS="802_11g 802_11a 802_11a_6g"
++DAWN_BANDS="802_11g 802_11a 802_11ax"
+ 
+ dawn_installed() { [ -x "$DAWN_BIN" ] && [ -x "$DAWN_INIT" ]; }
+ 

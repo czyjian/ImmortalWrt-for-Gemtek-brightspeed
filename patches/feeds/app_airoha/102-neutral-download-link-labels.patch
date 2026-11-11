@@ -1,0 +1,22 @@
+Subject: [PATCH] factory: use neutral download link labels
+
+--- a/luci-app-airoha-factory/htdocs/luci-static/resources/view/airoha_factory/factory.js
++++ b/luci-app-airoha-factory/htdocs/luci-static/resources/view/airoha_factory/factory.js
+@@ -177,7 +177,7 @@
+ 			'target': '_blank',
+ 			'rel': 'noopener external',
+ 			'href': ubootUrl
+-		}, ubootUrl),
++		}, _('Download')),
+ 		E('br'),
+ 		E('span', { 'class': 'fac-step' }, '2'),
+ 		' ',
+@@ -187,7 +187,7 @@
+ 			'target': '_blank',
+ 			'rel': 'noopener external',
+ 			'href': firmwareUrl
+-		}, firmwareUrl),
++		}, _('Download')),
+ 		E('br'),
+ 		E('em', {}, _('After upgrading U-Boot and firmware, this page can modify the serial number and factory data correctly.'))
+ 	]);

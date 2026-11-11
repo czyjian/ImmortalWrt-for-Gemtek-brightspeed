@@ -1,0 +1,5 @@
+#!/bin/sh
+uci set luci.main.mediaurlbase='/luci-static/shadcn'
+uci set luci.main.lang='zh_cn'
+uci commit luci
+exit 0

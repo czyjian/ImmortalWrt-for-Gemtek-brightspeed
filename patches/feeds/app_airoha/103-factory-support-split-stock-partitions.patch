@@ -1,0 +1,97 @@
+Subject: [PATCH] factory: support split DSD and uenv stock partitions
+
+Match the verified XR1710G stock-chainloader DSD partition at 0x400000.
+Read its text at partition offset zero; use the separate uenv partition
+for vendor environment access. Keep legacy vendor and full UBI paths.
+
+--- a/luci-app-airoha-factory/root/usr/libexec/rpcd/luci.airoha_factory
++++ b/luci-app-airoha-factory/root/usr/libexec/rpcd/luci.airoha_factory
+@@ -102,6 +102,25 @@
+ 	printf '%s\n' "$found"
+ }
+ 
++# Current stock-chainloader DTS exposes the old vendor regions separately.
++# Require the verified DSD address and size before changing any offsets.
++detect_split_factory_layout()
++{
++	local board dev offset size
++	board="$(cat /tmp/sysinfo/board_name 2>/dev/null)"
++	[ "$board" = "gemtek,xr1710g" ] || return 0
++	MTD_LABEL="dsd"
++	dev="$(find_mtd_dev)" || { MTD_LABEL="vendor"; return 0; }
++	read -r offset < "/sys/class/mtd/${dev##*/}/offset"
++	read -r size < "/sys/class/mtd/${dev##*/}/size"
++	if [ "$offset" != "4194304" ] || [ "$size" != "2097152" ]; then
++		MTD_LABEL="vendor"
++		return 0
++	fi
++	FACTORY_LAYOUT="split"
++	FACTORY_OFFSET=0
++}
++
+ find_ubi_factory()
+ {
+ 	local ubidev volume d n
+@@ -146,7 +165,7 @@
+ 	if [ "$FACTORY_LAYOUT" = "dsd" ]; then
+ 		dd if="$dev" of="$tmp" bs=65536 count=2 2>/dev/null
+ 	else
+-		dd if="$dev" of="$tmp" bs=65536 skip=64 count=2 2>/dev/null
++		dd if="$dev" of="$tmp" bs=65536 skip=$((FACTORY_OFFSET / 65536)) count=2 2>/dev/null
+ 	fi
+ }
+ 
+@@ -373,17 +392,22 @@
+ # make sure the factory-specific fw_env config points at the embedded U-Boot env
+ ensure_env_conf()
+ {
+-	local dev
++	local dev env_offset="0x200000"
+ 	if [ "$FACTORY_LAYOUT" = "dsd" ]; then
+ 		[ -r /etc/fw_env.config ] || return 1
+ 		UBOOT_ENV_CONF="/etc/fw_env.config"
+ 		return 0
+ 	fi
+ 
+-	dev="$(find_mtd_dev)" || dev="/dev/mtd0"
+-	[ -r "$UBOOT_ENV_CONF" ] && awk -v dev="$dev" '
++	if [ "$FACTORY_LAYOUT" = "split" ]; then
++		dev="$(MTD_LABEL=uenv find_mtd_dev)" || return 1
++		env_offset="0x0"
++	else
++		dev="$(find_mtd_dev)" || return 1
++	fi
++	[ -r "$UBOOT_ENV_CONF" ] && awk -v dev="$dev" -v offset="$env_offset" '
+ 		/^[[:space:]]*(#|$)/ { next }
+-		$1 == dev && tolower($2) == "0x200000" &&
++		$1 == dev && tolower($2) == offset &&
+ 			tolower($3) == "0x4000" && tolower($4) == "0x20000" {
+ 			found = 1
+ 			exit
+@@ -393,7 +417,7 @@
+ 	[ -w /etc ] || return 1
+ 	{
+ 		printf '# Airoha XR1710G U-Boot environment\n'
+-		printf '%s 0x200000 0x4000 0x20000\n' "$dev"
++		printf '%s %s 0x4000 0x20000\n' "$dev" "$env_offset"
+ 	} > "$UBOOT_ENV_CONF" 2>/dev/null
+ }
+ 
+@@ -568,7 +592,7 @@
+ 	fi
+ 
+ 	tmp="$(mktemp)"; orig="$(mktemp)"; headf="$(mktemp)"; bodyf="$(mktemp)"
+-	if ! dd if="$dev" of="$tmp" bs=65536 skip=64 count=2 2>/dev/null; then
++	if ! dd if="$dev" of="$tmp" bs=65536 skip=$((FACTORY_OFFSET / 65536)) count=2 2>/dev/null; then
+ 		rm -f "$tmp" "$orig" "$headf" "$bodyf"
+ 		printf '{"success":false,"error":"failed to read vendor factory block"}'
+ 		return
+@@ -644,6 +668,8 @@
+ 	( sleep 3; /sbin/reboot ) >/dev/null 2>&1 &
+ }
+ 
++detect_split_factory_layout
++
+ case "$1" in
+ 	list)
+ 		printf '{"getStatus":{},"setFactory":{"fields":{},"ethaddr":"string"}}\n'
