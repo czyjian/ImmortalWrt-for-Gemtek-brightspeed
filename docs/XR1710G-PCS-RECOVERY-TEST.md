@@ -30,15 +30,17 @@ This is a scoped recovery candidate, not a proven fix for the precise internal f
 - Kernel checkpatch: 0 errors, 0 warnings, 0 checks.
 - Full firmware build completed successfully (exit 0). The image contains the opt-in DT property and the recovery log string.
 - Image SHA256: `f76315fc97058e259280d74cf228a408cc73c7658967f31270fa2e62163a7f97`.
-- SHA256 matched on the build host, local output, and router upload. `sysupgrade -T` passed (exit 0); no image was flashed.
-- Candidate-kernel hardware cold boot / close-during-recovery tests are pending. The running router remains on its existing firmware; temporary modules have been unloaded.
+- SHA256 matched on the build host, local output, and router upload. `sysupgrade -T` passed (exit 0) before the user installed the test image.
+- Test firmware was installed on the XR1710G and both opt-in DT properties were confirmed at runtime.
+- Three router-side 100M -> 10G cycles each caused exactly one driver recovery and restored reception. Same-speed 10G renegotiations did not add recovery events.
+- Closing the interface shortly after 10G link-up, before the 250 ms deferred recovery, then reopening it restored normal operation without an extra recovery or kernel warning. The first shell timing attempt did not enter this window because fractional sleep was unavailable; the successful retry used a userspace millisecond timer.
+- A subsequent PC shutdown/start reproduced the low-speed sleeping link then 10G transition. Exactly one automatic driver recovery followed; DHCP ACK was captured and the client received its normal lease. Bound-source ICMP succeeded 3/3, receive counters advanced, and both 10G ports remained at 10G. No fallback reset record or kernel BUG/WARNING/Oops was observed.
+- This validates the scoped recovery on the tested client/port; longer-term reliability, direct client testing on the other 10G port, and the precise internal PCS failure remain open.
 
-## Next device validation
+## Remaining validation
 
-1. Check image SHA256 and run sysupgrade -T against the intended stock-chainloader image.
-2. Manually install the test image and return to AP mode if required.
-3. Confirm both 10G ports and normal DHCP, then repeat the router-side speed cycle while managing over Wi-Fi.
-4. Confirm exactly one recovery log per 100M -> 10G transition, restored RX/DHCP, no repeated reset loop, and unaffected other ports.
-5. Test a PC shutdown/start and interface close during a queued recovery.
+1. Observe ordinary use over a longer period and repeat cold boots when convenient.
+2. Validate the same client directly on the other opt-in 10G port before claiming both paths are equally covered.
+3. Continue isolating the PCS initialization stages to identify the exact internal failure, rather than treating full reinitialization as proof of a single-register fix.
 
 Keep the previous known-booting image available. Removing the DT boolean disables this candidate behavior in a subsequent build.
