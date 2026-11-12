@@ -46,3 +46,7 @@ This is a scoped recovery candidate, not a proven fix for the precise internal f
 3. Continue isolating the PCS initialization stages to identify the exact internal failure, rather than treating full reinitialization as proof of a single-register fix.
 
 Keep the previous known-booting image available. Removing the DT boolean disables this candidate behavior in a subsequent build.
+
+## Mechanism investigation update
+
+[Phase 2 isolation results](XR1710G-PCS-MECHANISM-PHASE2.md) distinguish the smaller ALLPCS reset plus PHY retry from unsuccessful local AN, force-selection, and separate TX/RX reset actions. Nine independent tests and pinned SDK rate-adapter FIFO/counter definitions are recorded. The existing workaround remains unchanged; the exact internal failure is still under investigation.
