@@ -35,12 +35,14 @@ This is a scoped recovery candidate, not a proven fix for the precise internal f
 - Three router-side 100M -> 10G cycles each caused exactly one driver recovery and restored reception. Same-speed 10G renegotiations did not add recovery events.
 - Closing the interface shortly after 10G link-up, before the 250 ms deferred recovery, then reopening it restored normal operation without an extra recovery or kernel warning. The first shell timing attempt did not enter this window because fractional sleep was unavailable; the successful retry used a userspace millisecond timer.
 - A subsequent PC shutdown/start reproduced the low-speed sleeping link then 10G transition. Exactly one automatic driver recovery followed; DHCP ACK was captured and the client received its normal lease. Bound-source ICMP succeeded 3/3, receive counters advanced, and both 10G ports remained at 10G. No fallback reset record or kernel BUG/WARNING/Oops was observed.
-- This validates the scoped recovery on the tested client/port; longer-term reliability, direct client testing on the other 10G port, and the precise internal PCS failure remain open.
+- The client was then returned to the original physical 10G LAN port (lan2 / MDIO address 5); ingress ICMP capture confirmed the client-port mapping. A complete router-driven 100M -> 10G cycle with the old DHCP fallback service stopped incremented the LAN driver recovery count by exactly one. Reception resumed and bound-source ICMP passed 3/3; the WAN uplink stayed at 10G. All advertised modes and the fallback service were restored afterward, with no kernel BUG/WARNING/Oops observed.
+- The first LAN cycle attempt lost its control transport because the PC-to-build-host connection also traversed the affected port. It was interrupted and is excluded from the complete-cycle result; the successful retry ran as a detached job on the build host.
+- Scoped recovery is now verified on both physical 10G ports. The PC shutdown/start case was validated with the client on WAN; the original LAN port was validated using the reproducible router-side speed cycle. Longer-term reliability and the precise internal PCS failure remain open.
 
 ## Remaining validation
 
 1. Observe ordinary use over a longer period and repeat cold boots when convenient.
-2. Validate the same client directly on the other opt-in 10G port before claiming both paths are equally covered.
+2. Repeat the original PC shutdown/start on the 10G LAN port during ordinary use when convenient; its software speed-cycle recovery has passed.
 3. Continue isolating the PCS initialization stages to identify the exact internal failure, rather than treating full reinitialization as proof of a single-register fix.
 
 Keep the previous known-booting image available. Removing the DT boolean disables this candidate behavior in a subsequent build.
