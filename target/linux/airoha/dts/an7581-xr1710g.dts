@@ -328,6 +328,7 @@
 	managed = "in-band-status";
 	phy-handle = <&phy8>;
 	phy-mode = "usxgmii";
+	airoha,reinit-usxgmii-after-100m;
 	nvmem-cells = <&wan_mac 0>;
 	nvmem-cell-names = "mac-address";
 	openwrt,netdev-name = "wan";
@@ -340,6 +341,7 @@
 	managed = "in-band-status";
 	phy-handle = <&phy5>;
 	phy-mode = "usxgmii";
+	airoha,reinit-usxgmii-after-100m;
 	nvmem-cells = <&lan_mac 0>;
 	nvmem-cell-names = "mac-address";
 	openwrt,netdev-name = "lan2";

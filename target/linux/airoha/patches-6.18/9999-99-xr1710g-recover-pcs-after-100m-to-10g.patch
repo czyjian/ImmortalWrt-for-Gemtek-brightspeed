@@ -1,0 +1,128 @@
+From: XR1710G customization
+Subject: [PATCH] net: airoha: opt in to PCS recovery after 100M to 10G
+
+Experimental board-scoped recovery based on repeated real hardware tests.
+The precise failing PCS sub-block remains under investigation.
+
+---
+--- a/drivers/net/ethernet/airoha/airoha_eth.c
++++ b/drivers/net/ethernet/airoha/airoha_eth.c
+@@ -2568,6 +2568,41 @@
+ 	}
+ }
+ 
++/* XR1710G RTL8261BE interop: a 100M -> 10G transition may leave
++ * carrier up while the host receives no frames. Repeating the existing
++ * PCS initialization, with the PHY still attached, restores traffic.
++ * This is a board opt-in recovery, not a generic AN7581 reset policy.
++ */
++static void airoha_usxgmii_reinit_work(struct work_struct *work)
++{
++	struct airoha_gdm_dev *dev = container_of(to_delayed_work(work),
++				struct airoha_gdm_dev, usxgmii_reinit_work);
++	struct net_device *netdev = to_net_dev(dev->phylink_config.dev);
++	struct phy_device *phy;
++	bool restart = false;
++
++	if (!READ_ONCE(dev->usxgmii_reinit_active))
++		return;
++	/* ndo_stop holds RTNL while cancelling this work. Never wait on it. */
++	if (!rtnl_trylock()) {
++		if (READ_ONCE(dev->usxgmii_reinit_active))
++			schedule_delayed_work(&dev->usxgmii_reinit_work, HZ / 10);
++		return;
++	}
++	phy = netdev->phydev;
++	if (READ_ONCE(dev->usxgmii_reinit_active) && netif_running(netdev) && phy) {
++		mutex_lock(&phy->lock);
++		restart = phy->link && phy->speed == SPEED_10000;
++		mutex_unlock(&phy->lock);
++	}
++	if (restart) {
++		netdev_info(netdev, "reinitializing PCS after 100M to 10G transition\n");
++		phylink_stop(dev->phylink);
++		phylink_start(dev->phylink);
++	}
++	rtnl_unlock();
++}
++
+ static int airoha_dev_open(struct net_device *netdev)
+ {
+ 	struct airoha_gdm_dev *dev = netdev_priv(netdev);
+@@ -2604,6 +2639,12 @@
+ 			return err;
+ 		}
+ 
++		dev->usxgmii_last_speed = SPEED_UNKNOWN;
++		WRITE_ONCE(dev->usxgmii_reinit_active,
++			   of_property_read_bool(netdev->dev.of_node,
++						 "airoha,reinit-usxgmii-after-100m") &&
++			   netdev->phydev && netdev->phydev->drv &&
++			   !strcmp(netdev->phydev->drv->name, "RTL8261BE 10Gbps PHY"));
+ 		phylink_start(dev->phylink);
+ 	}
+ 
+@@ -2659,11 +2700,13 @@
+ 	return 0;
+ 
+ err_phy_stop:
++	WRITE_ONCE(dev->usxgmii_reinit_active, false);
+ 	netif_tx_stop_all_queues(netdev);
+ 	if (dev->phylink) {
+ 		phylink_stop(dev->phylink);
+ 		phylink_disconnect_phy(dev->phylink);
+ 	}
++	cancel_delayed_work_sync(&dev->usxgmii_reinit_work);
+ 
+ 	return err;
+ }
+@@ -2673,8 +2716,11 @@
+ 	struct airoha_gdm_dev *dev = netdev_priv(netdev);
+ 	struct airoha_gdm_port *port = dev->port;
+ 
++	WRITE_ONCE(dev->usxgmii_reinit_active, false);
+ 	if (dev->phylink)
+ 		phylink_stop(dev->phylink);
++	/* phylink_stop drains resolve callbacks before cancelling their work. */
++	cancel_delayed_work_sync(&dev->usxgmii_reinit_work);
+ 
+ 	netif_tx_disable(netdev);
+ 	if (test_bit(AIROHA_DEV_F_PON, &dev->flags)) {
+@@ -4649,6 +4695,16 @@
+ 	struct airoha_eth *eth = dev->eth;
+ 	u32 frag_size_tx, frag_size_rx;
+ 
++	if (READ_ONCE(dev->usxgmii_reinit_active) &&
++	    interface == PHY_INTERFACE_MODE_USXGMII) {
++		int previous_speed = dev->usxgmii_last_speed;
++
++		dev->usxgmii_last_speed = speed;
++		if (previous_speed == SPEED_100 && speed == SPEED_10000)
++			schedule_delayed_work(&dev->usxgmii_reinit_work,
++					      msecs_to_jiffies(250));
++	}
++
+ 	/* TX/RX frag is configured only for GDM4 */
+ 	if (port->id != AIROHA_GDM4_IDX)
+ 		return;
+@@ -4837,6 +4893,7 @@
+ 
+ 	netdev->dev.of_node = of_node_get(np);
+ 	dev = netdev_priv(netdev);
++	INIT_DELAYED_WORK(&dev->usxgmii_reinit_work, airoha_usxgmii_reinit_work);
+ 	u64_stats_init(&dev->stats.syncp);
+ 	for (i = 0; i < ARRAY_SIZE(dev->txq_lock); i++)
+ 		spin_lock_init(&dev->txq_lock[i]);
+--- a/drivers/net/ethernet/airoha/airoha_eth.h
++++ b/drivers/net/ethernet/airoha/airoha_eth.h
+@@ -714,6 +714,10 @@
+ 	struct phylink *phylink;
+ 	struct phylink_config phylink_config;
+ 
++	struct delayed_work usxgmii_reinit_work;
++	bool usxgmii_reinit_active;
++	int usxgmii_last_speed;
++
+ 	/* Serialize netdev_tx_completed_queue() calls per TX queue during
+ 	 * QDMA migration.
+ 	 */
