@@ -1,0 +1,64 @@
+#!/bin/sh
+# Bounded recovery for the observed 10G link-up / client-no-RX failure.
+set -f
+case "$(cat /tmp/sysinfo/board_name 2>/dev/null)" in
+    gemtek,xr1710g|gemtek,xr1710g-ubi) ;;
+    *) exit 0 ;;
+esac
+
+. /lib/functions.sh
+config_load xr1710g_link_recovery
+config_get_bool enabled main enabled 1
+[ "$enabled" = 1 ] || exit 0
+
+recover_port() {
+    local port="$1" client="$2" xid="$3" now last=0 start=0 count=0
+    local state=/var/run/xr1710g-link-recovery
+    # Never reset WAN, bridges or wireless interfaces.
+    [ "$port" = lan2 ] || return 0
+    [ "$(cat /sys/class/net/lan2/carrier 2>/dev/null)" = 1 ] || return 0
+    [ "$(cat /sys/class/net/lan2/speed 2>/dev/null)" = 10000 ] || return 0
+    [ -e /sys/class/net/lan2/brport ] || return 0
+    mkdir -p "$state"
+    mkdir "$state/lock" 2>/dev/null || return 0
+    now="$(cut -d. -f1 /proc/uptime)"
+    [ ! -r "$state/limits" ] || read -r last start count < "$state/limits"
+    if [ "$last" -gt 0 ] && [ $((now - last)) -lt 120 ]; then
+        rmdir "$state/lock"
+        return 0
+    fi
+    if [ $((now - start)) -ge 900 ]; then start="$now"; count=0; fi
+    if [ "$count" -ge 4 ]; then
+        logger -t xr1710g-link-recovery "lan2 recovery budget exhausted; inspect link manually"
+        rmdir "$state/lock"
+        return 0
+    fi
+    count=$((count + 1))
+    printf '%s %s %s\n' "$now" "$start" "$count" > "$state/limits"
+    logger -t xr1710g-link-recovery "lan2: repeated DHCP Discover/Offer without Request; recovering client $client transaction $xid"
+    touch "$state/port-down"
+    if ip link set dev lan2 down; then
+        sleep 2
+        ip link set dev lan2 up || logger -t xr1710g-link-recovery "ERROR: could not bring lan2 back up"
+    fi
+    rm -f "$state/port-down"
+    rmdir "$state/lock"
+}
+
+logger -t xr1710g-link-recovery "monitoring lan2 DHCP handshake stalls (10G only)"
+tcpdump -p -ni any -tt -e -vv -l -s 700 'udp port 67 or udp port 68' |
+    awk -v port=lan2 -f /usr/share/xr1710g-link-recovery/dhcp-monitor.awk |
+    (
+        cleanup() {
+            if [ -e /var/run/xr1710g-link-recovery/port-down ]; then
+                ip link set dev lan2 up
+                rm -f /var/run/xr1710g-link-recovery/port-down
+            fi
+            rmdir /var/run/xr1710g-link-recovery/lock 2>/dev/null || true
+        }
+        trap cleanup EXIT
+        trap 'exit 0' TERM INT HUP
+        while read -r port client xid; do
+            recover_port "$port" "$client" "$xid"
+        done
+    )
